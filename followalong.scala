@@ -13,11 +13,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit
 import scala.math._
 import org.joda.time._
 
-// load data 
-val data = sc.newAPIHadoopFile("enron.avro",classOf[MailRecordInputFormat], classOf[AvroKey[MailRecord]], classOf[FileSplit],sc.hadoopConfiguration)
-val records = data.map(_._1.datum())
-
-// or easier
+// load data
 val args = Array("--avroMailInput", "enron.avro")
 val config = CommandLineOptionsParser.getConfigOpt(args).get
 val recordsRdd = MailRecordAnalytic.getMailRecordsRdd(sc, config)
@@ -99,17 +95,18 @@ foldercountbyuser.map(_._2.toDouble).stats
 foldercountbyuser.map(_._2.toDouble).histogram(100)._2.toList.foreach(n => println("*"*n.toInt))
 
 // date play
-val byTimeBoundary = recordsRdd.map(rec => {
+val byWeeks = recordsRdd.map(rec => {
     val dt = new DateTime(rec.getDateUtcEpoch)
-    val dow = dt.dayOfWeek.getAsText
-    val hod = dt.hourOfDay.getAsText
-    (dow,hod)
+    (dt.dayOfWeek.getAsText, dt.weekOfWeekyear.getAsText,dt.year.getAsText)})
+val byTimeBoundary = recordsRdd.map(rec => {
+  val dt = new DateTime(rec.getDateUtcEpoch)
+  (dt.dayOfWeek.getAsText, dt.hourOfDay.getAsText)
 })
 byTimeBoundary.cache
 val dhcounts = byTimeBoundary.map((_,1)).reduceByKey(_+_).collect
 dhcounts.sortBy(_._2).reverse.foreach{ case ((dow,how),n) => println(s"$dow at $how : $n") }
 
-val mondays = byTimeBoundary.filter(_._1=="Monday")
+val mondays = byWeeks.filter(_._1=="Monday")
 val mondayWeekHist = mondays.filter(_._3=="2001").map(t=> (t._2,1)).reduceByKey(_+_).collect.sortBy(_._1.toInt)
 val maximumNum = mondayWeekHist.map(_._2).max
 mondayWeekHist.map(_._2/maximumNum.toDouble*100).foreach(d => println("*"*d.toInt))
