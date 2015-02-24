@@ -6,9 +6,19 @@
 
 * Explore the Enron Dataset
   ([https://www.cs.cmu.edu/~./enron/](https://www.cs.cmu.edu/~./enron/)) while
-  learning to use Apache Spark.
+  learning to use Apache Spark.  Hopefully we can answer three questions:
+    * Which ENRON employees spent too much time organizing their emails?
+    * What hour of the week were most emails sent?
+    * When did the FBI show up?
 * Learn to appreciate the Scala Collections Library and the Resilient
   Distributed Dataset
+
+
+# Workshop non-goals
+
+* Deploy and monitor Spark Applications
+* Graphs
+* MLlib
 
 # Overview of resources
 
@@ -28,11 +38,24 @@
 * I am Tetra's Chief Data Scientist and I help certain people learn certain
   things about certain parts of their data.
 * Tetra Concepts, LLC is the finest collection of development talent anyone
-  could ever ask for. :)
+  could ask for (AND SOME OF THEM ARE WALKING AMONG YOU!!!!11!!1!!!!)
 
 # Why Apache Spark?
 
-* Three reasons
+* Excellent question: four parts of a partial answer.
+
+# Data Science is a filthy job
+
+* I am not even sure what Data Science is.  They put Science right in the name,
+  so it must be pretty serious right?
+* I like to think it is the disciplined application of a scientific mindset
+  to that nebulous thing called "data."
+* But really...
+    * You spend 90% of your time getting and cleaning that thing.
+    * And when you finally get it cleaned and available it very often is
+      unwieldy in some further way (size or speed.)
+    * The act of cleaning itself is a data science problem.
+
 
 # The Ecosystem is big and filled with snakes
 
@@ -41,26 +64,10 @@
 # You can lie with statistics
 
 * In a big enough database you can find a set of columns to perfectly predict
-  any outcome
-* [Spurious Correlations](http://www.tylervigen.com/)
-
-# Your customer wants pretty little magical things
-
-![pretty little magical thing](https://pbs.twimg.com/media/B9_ZwHPIYAA8sgK.jpg)
-
-
-# WTF is Data Science?
-
-* I am not sure.  They put Science right in the name, so it must be pretty
-  serious right?
-* I like to think it is the disciplined application of a scientific mindset
-  (testable hypotheses followed by well-designed tests to clarify
-  understanding) to that nebulous thing called "data."
-* A couple of facts
-    * You spend 90% of your time getting and cleaning that thing.
-    * And when you finally get it cleaned and available it very often is
-      unwieldy in some further way (size or speed.)
-    * The act of cleaning itself is a data science problem.
+  any outcome.
+    * [http://www.tylervigen.com/](http://www.tylervigen.com/)
+* We need better tools so we can spend more time doing the hard work of telling
+  the truth (or some approximation).
 
 # Why Apache Spark?
 
@@ -71,6 +78,10 @@
     * You can scale your exploratory code up to a full job relatively quickly:
       REPL driven development.
 * It wraps an increasing amount of the Hadoop Ecosystem and plays naturally.
+
+# Your customer wants pretty little magical things
+
+![Spark wraps a lot of other peoples toys](https://pbs.twimg.com/media/B9_ZwHPIYAA8sgK.jpg)
 
 # Let's get started
 
@@ -88,13 +99,12 @@ Moses Schönfinkel and Haskell Curry in the 1920s
 
 > [C]ombinator is a higher-order function that uses only function application and earlier defined combinators to define a result from its arguments [Combinatory Logic @wikipedia_combinatory_2014]
 
-# Higher-order function
-Function that takes function as argument or returns function
+A *Higher-Order Function* is a function that takes functions as arguments or returns function.
 
 # map
 
-* applies a given function to every element of a collection
-* returns collection of output of that function
+* Applies a given function to every element of a collection
+* Returns collection of outputs of that function
 * input argument - same type as collection type
 * return type - can be any type
 
@@ -163,8 +173,8 @@ val macbeth = """When shall we three meet again?
 |In thunder, lightning, or in rain?""".stripMargin
 val macLines = macbeth.split("\n")
 // macLines: Array[String] = Array(
-  When shall we three meet again?,
-  In thunder, lightning, or in rain?)
+//  When shall we three meet again?,
+// In thunder, lightning, or in rain?)
 
 //Non-word character split
 val macWordsNested: Array[Array[String]] =
@@ -265,4 +275,184 @@ Count: 1, value: 8
 Count: 2, value: 11
 evenCount: Int = 2
 ```
+
+# aggregate
+```
+List[+A]
+...
+def aggregate[B](z: B)(seqop: (B, A) => B,
+                       combop: (B, B) => B): B
+```
+* More general than fold or reduce. Can return different result type.
+* Apply seqop function to each partition of data.
+* Then apply combop function to combine all the results of seqop.
+* On a normal immutable list this is just a foldLeft with seqop (but on
+  a parallelized list both operations are called).
+
+# aggregate Example
+```scala
+val wordsAll = List("when", "shall", "we", "three",
+  "meet", "again", "in", "thunder", "lightning",
+  "or", "in", "rain")
+//Map(5 letter words ->3, 9->1, 2->4, 7->1, 4->3)
+val lengthDistro = wordsAll.aggregate(Map[Int, Int]())(
+  seqop = (distMap, currWord) =>
+  {
+    val length = currWord.length()
+    val newCount = distMap.getOrElse(length, 0) + 1
+    val newKv = (length, newCount)
+    distMap + newKv
+  },
+  combop = (distMap1, distMap2) => {
+    distMap1 ++ distMap2.map {
+      case (k, v) =>
+      (k, v + distMap1.getOrElse(k, 0))
+    }
+  })
+```
+
+# So what does this have to do with Apache Spark?
+
+* Resilient Distributed Dataset ([RDD](https://spark.apache.org/docs/1.2.0/api/scala/#org.apache.spark.rdd.RDD))
+* From API docs: "immutable, partitioned collection of elements that can be operated on in parallel"
+* map, flatMap, filter, reduce, fold, aggregate...
+
+# Spark - RDD API
+* [RDD API](http://spark.apache.org/docs/1.2.0/api/scala/index.html#org.apache.spark.rdd.RDD)
+* Transforms - map, flatMap, filter, reduce, fold, aggregate...
+
+    * Lazy evaluation (not evaluated until action!)
+
+* Actions - count, collect, first, take, saveAsTextFile...
+
+# Spark - From RDD to PairRDDFunctions
+* If an RDD contains tuples (K,V) - can apply PairRDDFunctions
+* Uses implicit conversion of RDD to PairRDDFunctions
+* In 1.2 and previous versions available by importing
+org.apache.spark.SparkContext._
+
+```scala
+From org.apache.spark.SparkContext:
+
+implicit def rddToPairRDDFunctions[K, V](
+  rdd: RDD[(K, V)])
+  (implicit kt: ClassTag[K],
+    vt: ClassTag[V],
+    ord: Ordering[K] = null) = {
+      new PairRDDFunctions(rdd)
+    }
+```
+
+# PairRDDFunctions
+* keys, values - return RDD of keys/values
+* mapValues - transform each value with a given function
+* flatMapValues - flatMap each value (0, 1 or more output per value)
+* groupByKey - RDD[(K, Iterable[V])]
+
+    * Note: expensive for aggregation/sum - use reduce/aggregateByKey!
+
+* reduceByKey - return same type as value type
+* foldByKey - zero/neutral starting value
+* aggregateByKey - can return different type
+* join (left/rightOuterJoin), cogroup
+...
+
+# From RDD to DoubleRDDFunctions
+* From API docs: "Extra functions available on RDDs of Doubles through an
+  implicit conversion. Import org.apache.spark.SparkContext._ "
+
+```scala
+From org.apache.spark.SparkContext:
+implicit def doubleRDDToDoubleRDDFunctions(
+  rdd: RDD[Double])
+    = new DoubleRDDFunctions(rdd)
+```
+
+# DoubleRDDFunctions
+* mean, stddev, stats (count, mean, stddev, min, max)
+* sum
+* histogram
+
+# Analytic 1 - Mail Folder Statistics In MapReduce
+* What are the least/most/average number of folders per user?
+* Each MailRecord has user name and folder name
+```
+lay-k/       <- mailFields(UserName)
+   business  <- mailFields(FolderName)
+   family
+   enron
+   inbox
+   ...
+```
+
+# Hadoop Mail Folder Stats - Mapper
+
+* read each mail record
+* emits key: userName, value: folderName for each email
+
+# Hadoop Mail Folder Stats - Reducer
+
+* reduce method
+
+    * create set from values for a given key (unique folder names per user)
+    * set.size == folder count
+    * keep adding up all set.size (totalNumberOfFolders)
+    * one up counter for each key (totalUsers)
+    * keep track of min/max count
+
+* cleanup method
+
+    * compute average for this partition: totalNumberOfFolders/totalUsers
+    * write out min, max, totalNumberOfFolders, totalUsers, avgPerPartition
+
+# Hadoop Mail Folder Stats - Driver
+* Set Input/OutputFormat
+* Number of reducers
+
+# Hadoop Mail Folder Stats - Results
+
+* if only one reducer - results are overall lowest/highest/avg
+* if multiple reducers
+
+    * post-processing overall lowest/highest
+    * add totalNumberOfFolders and totalUsers to compute overall average
+
+# Hadoop Mapper
+```java
+public void map(AvroKey<MailRecord> key,
+NullWritable value, Context context) throws ... {
+  MailRecord mailRecord = key.datum();
+  Map<CharSequence, CharSequence> mailFields =
+      mailRecord.getMailFields();
+  CharSequence userName =
+      mailFields.get(AvroMailMessageProcessor.USER_NAME);
+  CharSequence folderName =
+      mailFields.get(AvroMailMessageProcessor.FOLDER_NAME);
+  userKey.set(userName.toString());
+  folderValue.set(folderName.toString());
+  context.write(userKey, folderValue);
+}
+```
+
+# Hadoop Reducer
+```java
+public void reduce(Text userKey,
+  Iterable<Text> folderValues,
+  Context context) throws ... {
+  Set<String> uniqueFolders = new HashSet<String>();
+  for (Text folder : folderValues) {
+    uniqueFolders.add(folder.toString());
+  }
+  int count = uniqueFolder.size();
+  if (count > maxCount) maxCount = count;
+  if (count < minCount) minCount = count;
+  totalNumberOfFolder += count
+  totalUsers++
+}
+...
+public void cleanup...
+//write min, max, totalNumberOfFolders,
+//totalUsers, avgPerPartition
+```
+# Let's get to work
 
