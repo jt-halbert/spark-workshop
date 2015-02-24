@@ -5,6 +5,7 @@
 // First the necessary utilities to speed things along
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd._
+import scala.collection.JavaConverters._
 import com.uebercomputing.mailparser.enronfiles.AvroMessageProcessor
 import com.uebercomputing.mailrecord._
 import com.uebercomputing.mailrecord.Implicits.mailRecordToMailRecordOps
@@ -19,70 +20,8 @@ val config = CommandLineOptionsParser.getConfigOpt(args).get
 val recordsRdd = MailRecordAnalytic.getMailRecordsRdd(sc, config)
 val numDocs = recordsRdd.count
 
-val tokenizedBodies = recordsRdd.map(_.getBody).map(p => p.toLowerCase.replaceAll("[^a-z\\s]", " ").split("\\s+")).map(_.filter(l => l.size > 0 && l.size < 77))
-tokenizedBodies.cache
-val numDocs = tokenizedBodies.count
-// find the number of times each word appears across the corpus
-val termhist = tokenizedBodies.flatMap(_.distinct.map(w => (w,1))).reduceByKey((a,b) => a + b)
-termhist.cache
-//investigate: how many words appear in only one document across the corpus?
-termhist.collect.sortBy(_._2).toList.prefixLength(_._2==1)
-// 187,949
-val termMap = sc.broadcast(termhist.collect.toMap)
 
-
-def lengthLongestRun(s: String): Int = s.toList.tails.map(l => l.prefixLength(_ == l(0))).toList.max
-val stopwords = Array("the", "and", "enron", "for", "com", "you", "ect", "that", "this", "with", "from", "will", "have", "are", "hou")
-def termFilter(term: String): Boolean = term.size > 2 &&
-                                        term.size < 77 &&
-                                        !stopwords.contains(term) &&
-                                        lengthLongestRun(term) < 5 &&
-                                        termMap.value(term) > 1
-
-def bootlegTokenize(body: String): List[String] = {
-  body.toLowerCase.replaceAll("[^a-z\\s]", " ").split("\\s+").toList.filter(termFilter(_))
-}
-// TODO: these should be broadcast
-val uuids = sc.broadcast(recordsRdd.map(_.getUuid).collect)
-val terms = sc.broadcast(termhist.map(_._1).filter(termFilter).collect.sortBy(identity))
-
-
-val wordDocRDD: RDD[(String, String)] = recordsRdd.flatMap(rec => bootlegTokenize(rec.getBody).map((_,rec.getUuid)))
-wordDocRDD.cache
-val wordCorpusHist: RDD[(String, Int)] = wordDocRDD.groupByKey.mapValues(_.toSet.size)
-wordCorpusHist.cache
-val wordDocHist: RDD[(String, String), Int] = wordDocRDD.map((_,1)).reduceByKey(_+_)
-val wordDocReshaped: RDD[(String, (String, Int))] = wordDocHist.map(t => (t._1._1, (t._1._2,t._2)))
-wordDocReshaped.cache
-val docFreqTermFreqRDD: RDD[(String, Int, String, Int)] = wordCorpusHist.join(wordDocReshaped).map {case (word, (rdf, (uuid, rtf))) => (word, rdf, uuid, rtf)}
-docFreqTermFreqRDD.cache
-val reshape = docFreqTermFreqRDD.map(t => (t._3, (t._4,t._1,t._2)))
-val maxFreqByDoc = docFreqTermFreqRDD.map(t => (t._3, (t._4,t._1,t._2))).map(t => (t._1,t._2._1)).reduceByKey(max)
-val finalRawTermFreqDocFreqMaxFreqRDD = reshape.join(maxFreqByDoc).map {case (uuid,((rtf,word,rdf), maxtf)) => (uuid, rtf, word, rdf, maxtf) }
-finalRawTermFreqDocFreqMaxFreqRDD.cache
-
-def tfidf(rtf: Int, rdf: Int, mtf: Int): Double = {
-    val tf = 0.5 + 0.5*rtf.toDouble/mtf.toDouble
-    val idf = log(numDocs.toDouble/rdf.toDouble)
-    tf*idf
-}
-val TFIDF = finalRawTermFreqDocFreqMaxFreqRDD.map { case (uuid, rtf, word, rdf, maxtf) => (uuid,word,tfidf(rtf,rdf,maxtf))}
-// have access to uuids, terms, termMap
-recordsRdd.flatMap(rec => bootlegTokenize(rec.getBody).map(t => (uuids.indexOf(rec.getUuid), terms.indexOf(t))))
-val TFIDF = recordsRdd.flatMap(rec => {
-    val body = rec.getBody
-    val uuid = rec.getUuid
-    val tokens = bootlegTokenize(body)
-    val inDocTermHist = tokens.groupBy(identity).mapValues(_.size)
-    //val maxFreqOfAnyTermInDoc = inDocTermHist.map(_._2).max.toDouble
-    def tf(term: String): Double = 0.5 + 0.5*inDocTermHist(term)
-    def idf(term: String): Double = log(numDocs.toDouble/termMap.value(term).toDouble)
-    tokens.distinct.map(term => (uuids.value.indexOf(uuid), terms.value.indexOf(term), tf(term)*idf(term)))
-})
-// Try again on RDD
-
-
-// folder count play
+// First question: What do the folders look like?  Find a histogram of the number of folders per user.
 def pairLift[A,B](tup: (Option[A], Option[B])): Option[(A,B)] = {
     if (tup._1.isDefined && tup._2.isDefined) Some((tup._1.get, tup._2.get))
     else None
@@ -93,20 +32,74 @@ val foldercountbyuser = userfolders.groupByKey.mapValues(_.toSet.size)
 foldercountbyuser.map(_._2.toDouble).stats
 // (count: 150, mean: 22.033333, stdev: 26.773474, max: 193.000000, min: 2.000000)
 foldercountbyuser.map(_._2.toDouble).histogram(100)._2.toList.foreach(n => println("*"*n.toInt))
+// Who has 193?
+foldercountbyuser.map { case (user, numfolders) => (numfolders, user) }.lookup(193)
+// What folders does he have?
+userfolders.groupByKey.mapValues(_.toSet).lookup("kean-s")(0).toList.sortBy(identity).foreach(println)
+// lol@kean-s he even organized his deleted items
+// what if we ignore him?
+foldercountbyuser.filter(_._2 < 22 + 2*27).map(_._2.toDouble).stats
 
-// date play
-val byWeeks = recordsRdd.map(rec => {
-    val dt = new DateTime(rec.getDateUtcEpoch)
-    (dt.dayOfWeek.getAsText, dt.weekOfWeekyear.getAsText,dt.year.getAsText)})
-val byTimeBoundary = recordsRdd.map(rec => {
+// ------------------
+
+// What hour of the week do people send the most email?
+val byDayHour = recordsRdd.map(rec => {
   val dt = new DateTime(rec.getDateUtcEpoch)
   (dt.dayOfWeek.getAsText, dt.hourOfDay.getAsText)
 })
-byTimeBoundary.cache
-val dhcounts = byTimeBoundary.map((_,1)).reduceByKey(_+_).collect
+byDayHour.cache
+val dhcounts = byDayHour.map((_,1)).reduceByKey(_+_).collect
 dhcounts.sortBy(_._2).reverse.foreach{ case ((dow,how),n) => println(s"$dow at $how : $n") }
 
-val mondays = byWeeks.filter(_._1=="Monday")
-val mondayWeekHist = mondays.filter(_._3=="2001").map(t=> (t._2,1)).reduceByKey(_+_).collect.sortBy(_._1.toInt)
+// What do mondays look like?
+val byWeeks = recordsRdd.map(_.getDateUtcEpoch).sortBy(identity).map(instant => {
+    val dt = new DateTime(instant)
+    (dt.dayOfWeek.getAsText, dt.weekOfWeekyear.getAsText,dt.year.getAsText)})
+byWeeks.cache
+val mondays = byWeeks.filter { case (dow, woy, y) => dow=="Monday"}
+mondays.cache
+val mondayWeekHist = mondays.map((_,1)).reduceByKey(_+_)
+val mondayWeekTimeSeries = mondayWeekHist.collect.sortBy {
+  case ((dow,woy,y), num) => {
+    val dt = (new DateTime()).withWeekOfWeekyear(woy.toInt).withYear(y.toInt)
+    dt.toInstant.getMillis
+  }
+}
 val maximumNum = mondayWeekHist.map(_._2).max
-mondayWeekHist.map(_._2/maximumNum.toDouble*100).foreach(d => println("*"*d.toInt))
+mondayWeekTimeSeries.map(_._2/maximumNum.toDouble*100).foreach(d => println("*"*d.toInt))
+
+// Challenge Exercise: Find emails discussing the FBI Investigation.
+
+val TFIDF = sc.objectFile[(String, String, Double)]("TFIDF")
+val docTFIDF = TFIDF.map { case (uuid, term, tfidf) => (uuid, (term,tfidf))}.groupByKey
+val summaries = docTFIDF.map { case (uuid, terms) => (uuid, terms.toList.sortBy(_._2).reverse.map(_._1).take(10))}
+summaries.cache
+val investigationemails = summaries.filter(_._2.contains("investigation"))
+investigationemails.count
+investigationemails.collect.foreach(println)
+
+// Now can we get back the actual messages?
+
+val byUuid = recordsRdd.map(rec => (rec.getUuid, rec))
+byUuid.lookup("e688b416-2ac3-4ff8-9ada-2a5bc3a148fc")
+
+val FBIinvestigationemails = summaries.filter { case (uuid, summary) => summary.contains("investigation") && summary.contains("fbi")}
+val thejoin = FBIinvestigationemails.join(byUuid)
+thejoin.cache
+thejoin.count
+
+val firsttime = thejoin.map { case (uuid, (summary, record)) => record.getDateUtcEpoch}.min
+val lasttime = thejoin.map { case (uuid, (summary, record)) => record.getDateUtcEpoch}.max
+
+val duringInvestigation = byUuid.filter { case (uuid, record) => {
+  val t = record.getDateUtcEpoch
+  t > firsttime && t < lasttime}}
+
+def sameDayAs(t1: Long, t2: Long): Boolean = {
+  val dt1 = new DateTime(t1)
+  val dt2 = new DateTime(t2)
+  dt1.getYear == dt2.getYear && dt1.getDayOfYear == dt2.getDayOfYear }
+
+val firstFBIday = duringInvestigation.filter { case (uuid, record) => sameDayAs(firsttime,record.getDateUtcEpoch) }
+
+firstFBIday.join(summaries).collect.sortBy { case (uuid, (record, summary)) => record.getDateUtcEpoch }.foreach { case (uuid, (record, summary)) => println(summary) }

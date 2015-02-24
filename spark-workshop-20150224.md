@@ -32,7 +32,22 @@
 
 # Why Apache Spark?
 
-* not just yet
+* Three reasons
+
+# The Ecosystem is big and filled with snakes
+
+* [Berg Data](http://bigdatapix.tumblr.com/)
+
+# You can lie with statistics
+
+* In a big enough database you can find a set of columns to perfectly predict
+  any outcome
+* [Spurious Correlations](http://www.tylervigen.com/)
+
+# Your customer wants pretty little magical things
+
+![pretty little magical thing](https://pbs.twimg.com/media/B9_ZwHPIYAA8sgK.jpg)
+
 
 # WTF is Data Science?
 
