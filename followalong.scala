@@ -103,3 +103,43 @@ def sameDayAs(t1: Long, t2: Long): Boolean = {
 val firstFBIday = duringInvestigation.filter { case (uuid, record) => sameDayAs(firsttime,record.getDateUtcEpoch) }
 
 firstFBIday.join(summaries).collect.sortBy { case (uuid, (record, summary)) => record.getDateUtcEpoch }.foreach { case (uuid, (record, summary)) => println(summary) }
+
+
+// Time for new stuff
+
+def ratioLetters(s: String): Double = {
+  val (numNotWhiteSpace, numIsLetter) = "\\s+".r.replaceAllIn(s,"").foldLeft((0.0, 0.0)) {
+    (acc, c) => {
+      (acc._1 + 1, acc._2 + (if (c.isLetter) 1 else 0))
+    }
+  }
+  numIsLetter/numNotWhiteSpace
+}
+
+def stringDistance(s1: String, s2: String): Int = {
+  def sd(s1: List[Char], s2: List[Char], costs: List[Int]): Int = s2 match {
+    case Nil => costs.last
+    case c2 :: tail => sd( s1, tail,
+        (List(costs.head+1) /: costs.zip(costs.tail).zip(s1))((a,b) => b match {
+          case ((rep,ins), chr) => Math.min( Math.min( ins+1, a.head+1 ), rep + (if (chr==c2) 0 else 1) ) :: a
+        }).reverse
+      )
+  }
+  sd(s1.toList, s2.toList, (0 to s1.length).toList)
+}
+
+def sample(dist: Iterable[(String, Int)]): String = {
+  val p = scala.util.Random.nextDouble*dist.map(_._2).sum
+  val iter = dist.iterator
+  var accum = 0.0
+  while (iter.hasNext) {
+    val (item, itemProb) = iter.next
+    accum += itemProb
+    if (accum >= p)
+      return item  // return so that we don't have to search through the whole distribution
+  }
+  sys.error("something totally crazy happened.")
+}
+
+val sentenceSplitter = """(?<=[.\!\?])\s+(?=[A-Z])"""
+
