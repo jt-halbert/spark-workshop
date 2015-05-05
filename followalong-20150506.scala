@@ -93,4 +93,4 @@ def probabilityOfSentence(sentence: String): Double = {
    }.reduce(_*_)
 }
 
-
+//ideas: find most likely sentence starting with I
