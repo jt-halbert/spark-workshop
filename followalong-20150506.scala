@@ -47,6 +47,28 @@ def sample(dist: Iterable[(String, Int)]): String = {
   sys.error("something totally crazy happened.")
 }
 
+def sampleMultinomial[T](dist: List[(T, Int)]): T = {
+  val p = scala.util.Random.nextDouble*dist.map(_._2).sum
+  def recur(acc: Int, d: List[(T, Int)]): T = d match {
+    case (t,n) :: Nil => t
+    case (t,n) :: ds  => if (acc + n >= p) t else {
+      recur(acc+n,ds)
+    }
+  }
+  recur(0,dist)
+}
+
+def time[R](block: => R): R = {
+   val t0 = System.nanoTime()/1000000.0
+   val result = block
+   println("Elapsed time: " + (System.nanoTime/1000000.0 - t0)+"ms")
+   result
+}
+
+// compare two methods
+val test = (1 to 100).map(_.toString).zip(Vector.fill(100)(5)).toList
+time(Vector.fill(100000)(sample(test)))
+time(Vector.fill(100000)(sampleMultinomial(test)))
 
 val fromVince = recordsRdd.filter(_.getFrom=="vince.kaminski@enron.com")
 val vinceBodies = fromVince.map(_.getBody)
@@ -55,6 +77,7 @@ val mostlyLetters = vinceBodies.filter(b => ratioLetters(b) > ratioStats.mean + 
 val uptoSig = ".*?\\s+Vince".r
 val vinceCorpus = mostlyLetters.flatMap(uptoSig.findFirstIn)
 vinceCorpus.cache
+
 val sentenceSplitter = """(?<=[.\!\?])\s+(?=[A-Z])"""
 val sentences = vinceCorpus.flatMap(_.split(sentenceSplitter)).filter(_!="Vince")
 
@@ -63,6 +86,7 @@ vinceCorpus.map(_.split(sentenceSplitter)).map(_.size.toDouble).stats
 //note that the mean ~ stdev ... maybe it is a Gamma distribution?
 // though it is discrete... so Negative Binomial.  I like to think so.
 sentences.cache
+
 val trigrams = sentences.map(List("","") ::: _.split("\\s+").toList ::: List("","")).flatMap(_.sliding(3))
 
 val model = trigrams.map((_,1)).reduceByKey(_+_).map {case (triple, count) =>
@@ -76,12 +100,25 @@ val randomWord = State[List[String], String](state => {
   val next = sample(model(state))
   (next, List(state.last, next))})
 
+val mostLikelyWord = State[List[String], String](state => {
+   val next = model(state).toList.sortBy(_._2).reverse.head._1
+   (next, List(state.last, next))
+})
+
 def randomSentence(): String = {
   def recur(acc: List[String], state: (String, List[String])): List[String] = state match {
     case ("", _) => acc
     case (w, ws) => recur(w::acc, randomWord.next(ws))
   }
   recur(List(), randomWord.next(List("",""))).reverse.mkString(" ")
+}
+
+def greedySentence(startState: List[String]): String = {
+  def recur(acc: List[String], state: (String, List[String])): List[String] = state match {
+    case ("", _) => acc
+    case (w, ws) => recur(w::acc, mostLikelyWord.next(ws))
+  }
+  (recur(List(), mostLikelyWord.next(startState)):::List(startState.last)).reverse.mkString(" ")
 }
 
 def probabilityOfSentence(sentence: String): Double = {
