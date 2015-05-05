@@ -57,6 +57,8 @@ val vinceCorpus = mostlyLetters.flatMap(uptoSig.findFirstIn)
 vinceCorpus.cache
 val sentenceSplitter = """(?<=[.\!\?])\s+(?=[A-Z])"""
 val sentences = vinceCorpus.flatMap(_.split(sentenceSplitter)).filter(_!="Vince")
+
+// add a filter to stop "---------------------- Forwarded by Vince"
 vinceCorpus.map(_.split(sentenceSplitter)).map(_.size.toDouble).stats
 //note that the mean ~ stdev ... maybe it is a Gamma distribution?
 // though it is discrete... so Negative Binomial.  I like to think so.
