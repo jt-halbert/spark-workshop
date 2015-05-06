@@ -2,12 +2,13 @@
  * This is an update to the scala script from the first workshop.
  */
 
+// Initial setup
+
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd._
 import com.uebercomputing.mailparser.enronfiles.AvroMessageProcessor
 import com.uebercomputing.mailrecord._
 import com.uebercomputing.mailrecord.Implicits.mailRecordToMailRecordOps
-
 val args = Array("--avroMailInput", "../../data/filemail.avro", "--hadoopConfPath", "hadoop-local.xml")
 val config = CommandLineOptionsParser.getConfigOpt(args).get
 val recordsRdd = MailRecordAnalytic.getMailRecordsRdd(sc, config)
@@ -20,31 +21,6 @@ def ratioLetters(s: String): Double = {
     }
   }
   numIsLetter/numNotWhiteSpace
-}
-
-def stringDistance(s1: String, s2: String): Int = {
-  def sd(s1: List[Char], s2: List[Char], costs: List[Int]): Int = s2 match {
-    case Nil => costs.last
-    case c2 :: tail => sd( s1, tail,
-        (List(costs.head+1) /: costs.zip(costs.tail).zip(s1))((a,b) => b match {
-          case ((rep,ins), chr) => Math.min( Math.min( ins+1, a.head+1 ), rep + (if (chr==c2) 0 else 1) ) :: a
-        }).reverse
-      )
-  }
-  sd(s1.toList, s2.toList, (0 to s1.length).toList)
-}
-
-def sample(dist: Iterable[(String, Int)]): String = {
-  val p = scala.util.Random.nextDouble*dist.map(_._2).sum
-  val iter = dist.iterator
-  var accum = 0.0
-  while (iter.hasNext) {
-    val (item, itemProb) = iter.next
-    accum += itemProb
-    if (accum >= p)
-      return item  // return so that we don't have to search through the whole distribution
-  }
-  sys.error("This will never be reached.")
 }
 
 def sampleMultinomial[T](dist: List[(T, Int)]): T = {
@@ -132,4 +108,31 @@ def probabilityOfSentence(sentence: String): Double = {
    }.reduce(_*_)
 }
 
-//ideas: find most likely sentence starting with I
+
+// utilities
+
+def stringDistance(s1: String, s2: String): Int = {
+  def sd(s1: List[Char], s2: List[Char], costs: List[Int]): Int = s2 match {
+    case Nil => costs.last
+    case c2 :: tail => sd( s1, tail,
+        (List(costs.head+1) /: costs.zip(costs.tail).zip(s1))((a,b) => b match {
+          case ((rep,ins), chr) => Math.min( Math.min( ins+1, a.head+1 ), rep + (if (chr==c2) 0 else 1) ) :: a
+        }).reverse
+      )
+  }
+  sd(s1.toList, s2.toList, (0 to s1.length).toList)
+}
+
+def sample(dist: Iterable[(String, Int)]): String = {
+  val p = scala.util.Random.nextDouble*dist.map(_._2).sum
+  val iter = dist.iterator
+  var accum = 0.0
+  while (iter.hasNext) {
+    val (item, itemProb) = iter.next
+    accum += itemProb
+    if (accum >= p)
+      return item  // return so that we don't have to search through the whole distribution
+  }
+  sys.error("This will never be reached.")
+}
+
