@@ -87,6 +87,7 @@
 
 * The first step is to learn enough Scala to be dangerous.
 
+![Spark wraps a lot of other peoples toys](/images/flatMap.png)
 
 # Combinator functions on Scala collections
 
