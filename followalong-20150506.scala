@@ -44,7 +44,7 @@ def sample(dist: Iterable[(String, Int)]): String = {
     if (accum >= p)
       return item  // return so that we don't have to search through the whole distribution
   }
-  sys.error("something totally crazy happened.")
+  sys.error("This will never be reached.")
 }
 
 def sampleMultinomial[T](dist: List[(T, Int)]): T = {
@@ -59,9 +59,9 @@ def sampleMultinomial[T](dist: List[(T, Int)]): T = {
 }
 
 def time[R](block: => R): R = {
-   val t0 = System.nanoTime()/1000000.0
+   val t0 = System.currentTimeMillis
    val result = block
-   println("Elapsed time: " + (System.nanoTime/1000000.0 - t0)+"ms")
+   println("Elapsed time: " + (System.currentTimeMillis - t0)+"ms")
    result
 }
 
@@ -125,7 +125,7 @@ def probabilityOfSentence(sentence: String): Double = {
    val words = List("",""):::sentence.split("\\s+").toList:::List("","")
    val triples = words.sliding(3).toList.map(l=>(l.init,l.last))
    triples.map { case (state, transitionTo) =>
-    val possibleTransitions = model(state)
+    val possibleTransitions = broadcastModel.value(state)
     val total = possibleTransitions.map(_._2).sum.toDouble
     val actualCount = possibleTransitions.find(_._1==transitionTo).getOrElse(("",0))._2.toDouble
     actualCount/total
