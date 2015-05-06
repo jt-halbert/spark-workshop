@@ -4,34 +4,27 @@
 
 # Workshop goals
 
-* Explore the Enron Dataset
-  ([https://www.cs.cmu.edu/~./enron/](https://www.cs.cmu.edu/~./enron/)) while
-  learning to use Apache Spark.  Hopefully we can answer three questions:
-    * Which ENRON employees spent too much time organizing their emails?
-    * What hour of the week were most emails sent?
-    * When did the FBI show up?
-* Learn to appreciate the Scala Collections Library and the Resilient
-  Distributed Dataset
-
+* Work a data exploration and analysis problem with Spark.
+* Learn enough Scala to appreciate the collections library.
+* Leave feeling you know enough to begin teaching yourself.
 
 # Workshop non-goals
 
 * Deploy and monitor Spark Applications
 * Graphs
-* MLlib
+* MLlib (well... maybe if we have time)
 
 # Overview of resources
 
 * This presentation and "answers" to the "exercises" are available at
   [https://github.com/jt-halbert/spark-workshop/](https://github.com/jt-halbert/spark-workshop/).
-* The scripts we used to create the AWS EMR instances is available at
-  [https://github.com/notjasonmorris/AWS](https://github.com/notjasonmorris/AWS).
 * The ETL code that is making our exploration of the Enron dataset so
   convenient is available at
   [https://github.com/medale/spark-mail/](https://github.com/medale/spark-mail/).
-
 * LARGE PORTIONS of this presentation are pulled from Markus' work.  Thanks
   Markus!!
+* The data we will need is already in the ```tar``` you downloaded (or the VM).  It is a subset of the famous ENRON dataset.
+    * [https://www.cs.cmu.edu/~./enron/](https://www.cs.cmu.edu/~./enron/)
 
 # Who are we?
 
@@ -42,7 +35,7 @@
 
 # Why Apache Spark?
 
-* Excellent question: four parts of a partial answer.
+* Excellent question
 
 # Data Science is a filthy job
 
@@ -50,24 +43,15 @@
   so it must be pretty serious right?
 * I like to think it is the disciplined application of a scientific mindset
   to that nebulous thing called "data."
-* But really...
-    * You spend 90% of your time getting and cleaning that thing.
-    * And when you finally get it cleaned and available it very often is
-      unwieldy in some further way (size or speed.)
-    * The act of cleaning itself is a data science problem.
+* In my experience it is three activities
 
+# The Three Big Things
 
-# The Ecosystem is big and filled with snakes
+1. Find a Problem.
+2. Find a Solution.
+3. Automate?
 
-* [Berg Data](http://bigdatapix.tumblr.com/)
-
-# You can lie with statistics
-
-* In a big enough database you can find a set of columns to perfectly predict
-  any outcome.
-    * [http://www.tylervigen.com/](http://www.tylervigen.com/)
-* We need better tools so we can spend more time doing the hard work of telling
-  the truth (or some approximation).
+Be very careful about the order.
 
 # Why Apache Spark?
 
@@ -87,7 +71,6 @@
 
 * The first step is to learn enough Scala to be dangerous.
 
-![Spark wraps a lot of other peoples toys](./images/flatMap.png)
 
 # Combinator functions on Scala collections
 
@@ -102,12 +85,21 @@ Moses Schönfinkel and Haskell Curry in the 1920s
 
 A *Higher-Order Function* is a function that takes functions as arguments or returns function.
 
+# Functional Programming
+
+* An approach/style of programming that deals with expressions and values rather than statements.
+* Functions are treated (to the extent possible) as Mathematical Functions (no side effects, deterministic)
+
 # map
 
 * Applies a given function to every element of a collection
 * Returns collection of outputs of that function
 * input argument - same type as collection type
 * return type - can be any type
+
+#
+
+![](./images/map.png)
 
 # map - Scala
 ```scala
@@ -168,6 +160,14 @@ order to output List[B]
   * removes inner nesting - flattens
   * output list can be smaller or empty (if intermediates were empty)
 
+#
+
+![](./images/whatif.png)
+
+#
+
+![](./images/flatMap.png)
+
 # flatMap Example
 ```scala
 val macbeth = """When shall we three meet again?
@@ -226,6 +226,10 @@ def reduce[A1 >: A](op: (A1, A1) => A1): A1
 Result is same type as (or supertype of) list type.
 * UnsupportedOperationException if this list is empty.
 
+#
+
+![](./images/reduce.png)
+
 # reduce Example
 ```scala
 //beware of overflow if using default Int!
@@ -276,42 +280,6 @@ Count: 1, value: 8
 Count: 2, value: 11
 evenCount: Int = 2
 ```
-
-# aggregate
-```
-List[+A]
-...
-def aggregate[B](z: B)(seqop: (B, A) => B,
-                       combop: (B, B) => B): B
-```
-* More general than fold or reduce. Can return different result type.
-* Apply seqop function to each partition of data.
-* Then apply combop function to combine all the results of seqop.
-* On a normal immutable list this is just a foldLeft with seqop (but on
-  a parallelized list both operations are called).
-
-# aggregate Example
-```scala
-val wordsAll = List("when", "shall", "we", "three",
-  "meet", "again", "in", "thunder", "lightning",
-  "or", "in", "rain")
-//Map(5 letter words ->3, 9->1, 2->4, 7->1, 4->3)
-val lengthDistro = wordsAll.aggregate(Map[Int, Int]())(
-  seqop = (distMap, currWord) =>
-  {
-    val length = currWord.length()
-    val newCount = distMap.getOrElse(length, 0) + 1
-    val newKv = (length, newCount)
-    distMap + newKv
-  },
-  combop = (distMap1, distMap2) => {
-    distMap1 ++ distMap2.map {
-      case (k, v) =>
-      (k, v + distMap1.getOrElse(k, 0))
-    }
-  })
-```
-
 # So what does this have to do with Apache Spark?
 
 * Resilient Distributed Dataset ([RDD](https://spark.apache.org/docs/1.2.0/api/scala/#org.apache.spark.rdd.RDD))
@@ -362,8 +330,8 @@ implicit def rddToPairRDDFunctions[K, V](
 * From API docs: "Extra functions available on RDDs of Doubles through an
   implicit conversion. Import org.apache.spark.SparkContext._ "
 
-```scala
 From org.apache.spark.SparkContext:
+```scala
 implicit def doubleRDDToDoubleRDDFunctions(
   rdd: RDD[Double])
     = new DoubleRDDFunctions(rdd)
@@ -374,7 +342,7 @@ implicit def doubleRDDToDoubleRDDFunctions(
 * sum
 * histogram
 
-# Analytic 1 - Mail Folder Statistics In MapReduce
+# Example 1 - Mail Folder Statistics In MapReduce
 * What are the least/most/average number of folders per user?
 * Each MailRecord has user name and folder name
 ```
@@ -457,3 +425,88 @@ public void cleanup...
 ```
 # Let's get to work
 
+# Warm-up
+
+* Who sent the most email?
+* Hint:  if you have an ```RDD[(String, Int)]``` you can do this:
+```scala
+myRdd.top(10)(Ordering.by(_._2)).foreach(println)
+```
+
+# Problem Statement
+
+* Build a Markov model of Vince's sentences.
+    * We'll talk through what that is as we progress.
+
+# Step 1
+
+* Find all the email bodies from Vince that contain mostly letters.
+    * This is somewhat arbitrary, but it limits to emails without spreadsheets pasted into them.
+* Hint: Use this (if you want)
+
+```scala
+def ratioLetters(s: String): Double = {
+  val (tot, n) = s.replaceAll("""\s+""","")
+                  .foldLeft((0.0, 0.0)) {
+    (acc, c) => {
+      (acc._1 + 1, acc._2 + (if (c.isLetter) 1 else 0))
+    }
+  }
+  n/tot
+}
+```
+
+# Step 2
+
+* Get rid of text below sigline and break into sentences.
+* Hint: 
+```scala
+val uptoSig = ".*?\\s+Vince".r
+val sentenceSplitter = """(?<=[.\!\?])\s+(?=[A-Z])"""
+```
+* Note that regexes have methods for working on strings, and vice versa
+
+# Step 3
+
+* Build an RDD of trigrams
+    * e.g. "This is a simple sentence." becomes 
+```scala
+("","","This")
+("","This","is")
+("This","is","a")
+("is","a","simple")
+("a","simple","sentence.")
+("simple","sentence.","")
+("sentence.","","")
+```
+* Hint: 
+```scala
+ _.split("\\s+")
+```
+and
+```scala
+.sliding(3)
+```
+
+# Step 4 (Challenge)
+
+* Build the model:
+    * Reduce to ```RDD[(List[String],(String, Int))]``` of Antecedent Pair of Word followed by Consequent Word and count.
+
+# Step 5 (Challenge)
+
+* Build a Vince Sentence Generator.
+* Hint:  Multinomial Sampler
+
+```scala
+def sampleMultinomial[T](dist: List[(T, Int)]): T = {
+  val p = scala.util.Random.nextDouble*dist.map(_._2).sum
+  def recur(acc: Int, d: List[(T, Int)]): T = d match {
+    case (t,n) :: Nil => t
+    case (t,n) :: ds  => if (acc + n >= p) t else {
+      recur(acc+n,ds)
+    }
+  }
+  recur(0,dist)
+}
+```
