@@ -325,10 +325,9 @@ val sentences = corpus.flatMap(_.split(sentenceSplitter))
 sentences.cache
 ```
 
-# Step 3
+# Build an RDD of trigrams
 
-* Build an RDD of trigrams
-    * e.g. "This is a simple sentence." becomes 
+* e.g. "This is a simple sentence." becomes 
 ```scala
 ("","","This")
 ("","This","is")
@@ -347,14 +346,12 @@ and
 .sliding(3)
 ```
 
-# Step 4 (Challenge)
+# Build a model (Challenge)
 
-* Build the model:
-    * Reduce to ```RDD[((String,String),(String, Int))]``` of Antecedent Pair of Word followed by Consequent Word and count.
+* Reduce to ```RDD[((String,String),(String, Int))]``` of Antecedent Pair of Word followed by Consequent Word and count.
 
-# Step 5 (Challenge)
+# Build a Vince Sentence Generator (Challenge)
 
-* Build a Vince Sentence Generator.
 * Hint:  Multinomial Sampler
 
 ```scala
