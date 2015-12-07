@@ -369,6 +369,6 @@ def sampleMultinomial[T](dist: List[(T, Int)]): T = {
   recur(0,dist)
 }
 ```
-
+#
 
 ![](./images/multinomial.png)
