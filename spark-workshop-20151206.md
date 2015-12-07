@@ -1,6 +1,9 @@
 % Apache Spark Workshop
 % Tetra Concepts  || Jailbreak Brewing Company.
 
+
+![](./images/datacake.png)
+
 # Workshop goals
 
 * Work a data modeling problem with Spark (Dataframes and the basics of the RDD api).
@@ -366,3 +369,6 @@ def sampleMultinomial[T](dist: List[(T, Int)]): T = {
   recur(0,dist)
 }
 ```
+
+
+![](./images/multinomial.png)
